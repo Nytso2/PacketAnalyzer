@@ -1,0 +1,62 @@
+cmake_minimum_required(VERSION 3.16)
+project(PacketAnalyzer)
+
+# Set C++ standard
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+# Find Qt6
+find_package(Qt6 REQUIRED COMPONENTS Core Widgets)
+
+# Enable Qt's MOC for Q_OBJECT classes
+set(CMAKE_AUTOMOC ON)
+
+# Create executable from single source file
+add_executable(PacketAnalyzer main.cpp)
+
+# Link Qt libraries
+target_link_libraries(PacketAnalyzer Qt6::Core Qt6::Widgets)
+
+# Windows-specific settings for packet capture
+if(WIN32)
+    # Try to find Npcap installation
+    if(EXISTS "C:/Program Files/Npcap/sdk")
+        target_include_directories(PacketAnalyzer PRIVATE "C:/Program Files/Npcap/sdk/Include")
+        target_link_libraries(PacketAnalyzer 
+            "C:/Program Files/Npcap/sdk/Lib/x64/wpcap.lib"
+            "C:/Program Files/Npcap/sdk/Lib/x64/Packet.lib"
+        )
+    elseif(EXISTS "C:/WpdPack")
+        # Alternative WinPcap location
+        target_include_directories(PacketAnalyzer PRIVATE "C:/WpdPack/Include")
+        target_link_libraries(PacketAnalyzer 
+            "C:/WpdPack/Lib/x64/wpcap.lib"
+            "C:/WpdPack/Lib/x64/Packet.lib"
+        )
+    else()
+        message(WARNING "Npcap/WinPcap not found. Install from https://npcap.com/")
+    endif()
+    
+    # Link Windows networking libraries
+    target_link_libraries(PacketAnalyzer ws2_32 iphlpapi)
+    
+    # Copy Qt DLLs to output directory
+    add_custom_command(TARGET PacketAnalyzer POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        $<TARGET_FILE:Qt6::Core>
+        $<TARGET_FILE:Qt6::Widgets>
+        $<TARGET_FILE:Qt6::Gui>
+        $<TARGET_FILE_DIR:PacketAnalyzer>
+    )
+endif()
+
+# Linux/macOS settings
+if(UNIX)
+    find_package(PkgConfig REQUIRED)
+    pkg_check_modules(PCAP REQUIRED libpcap)
+    target_link_libraries(PacketAnalyzer ${PCAP_LIBRARIES})
+    target_include_directories(PacketAnalyzer PRIVATE ${PCAP_INCLUDE_DIRS})
+    
+    # Additional networking libraries for Linux
+    target_link_libraries(PacketAnalyzer resolv)
+endif()

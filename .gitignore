@@ -1,0 +1,38 @@
+# Build directories
+build/
+Build/
+cmake-build-*/
+
+# IDE files
+.vscode/
+.idea/
+*.pro.user
+*.autosave
+
+# Compiled binaries
+PacketAnalyzer
+PacketAnalyzer.exe
+*.o
+*.obj
+
+# CMake generated files
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+*.cmake
+
+# Qt generated files
+*_autogen/
+*.moc
+moc_*.cpp
+ui_*.h
+
+# System files
+.DS_Store
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.temp
+*~
