@@ -48,6 +48,7 @@ bash# Install Qt6, CMake, and Npcap from their websites
 cmake -B build -S . -DCMAKE_PREFIX_PATH="C:\Qt\6.5.0\mingw_64"
 cmake --build build
 # Run as Administrator
+```
 🚀 Usage
 
 Select Network Interface - Choose your WiFi/Ethernet adapter
