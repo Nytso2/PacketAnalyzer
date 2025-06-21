@@ -14,7 +14,7 @@
 </div>
 
 ---
-<img src="screenshots/main_interface.png" alt="Main Interface" width="80%">
+<img src="screenshots/Screenshot1.png" alt="Main Interface" width="80%">
 
 ## 🌟 Features
 
