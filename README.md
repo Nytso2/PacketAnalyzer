@@ -83,3 +83,8 @@ Framework: Qt6 with C++17
 - nmap - Network discovery tool
 - Linux/Windows - Cross-platform support
 - Root/Admin - Required for packet capture
+
+### License
+This project is licensed under the MIT License - see the LICENSE file for details.
+### NOTICE
+- This tool is designed for educational purposes and authorized network analysis only. Users must ensure compliance with all applicable laws and regulations. 
