@@ -331,7 +331,7 @@ QStringList PacketAnalyzer::getNetworkInterfaces() {
 MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
     setupUI();
     
-    setWindowTitle("Packet Analyzer - Professional Network Tool");
+    setWindowTitle("PacketAnalyzer");
     setMinimumSize(1200, 800);
     resize(1400, 1000);
     
