@@ -60,3 +60,26 @@ sudo pacman -S qt6-base libpcap nmap
 
 # Fedora/RHEL
 sudo dnf install qt6-qtbase-devel libpcap-devel nmap
+```
+### Quick Setup
+```bash
+git clone https://github.com/Nytso2/PacketAnalyzer.git
+cd PacketAnalyzer
+qmake6 && make
+sudo ./PacketAnalyzer  # Root required for packet capture
+```
+### Technical Stack
+
+Framework: Qt6 with C++17
+- Packet Engine: libpcap with multi-threading
+- Network Scanner: nmap integration
+- UI/UX: Custom dark theme with Qt Widgets
+- Export: JSON and plaintext formats
+
+### Requirements
+
+- Qt 6.0+ - Modern C++ GUI framework
+- libpcap - Low-level packet capture
+- nmap - Network discovery tool
+- Linux/Windows - Cross-platform support
+- Root/Admin - Required for packet capture
