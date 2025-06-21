@@ -1,6 +1,6 @@
 # 🔍 PacketAnalyzer
 
-> A sleek, professional network packet capture and analysis tool with real-time scanning capabilities
+> A sleek, nice network packet capture and analysis tool with real-time scanning capabilities
 
 <div align="center">
 
