@@ -1,80 +1,62 @@
-A professional network packet capture and analysis tool built with Qt6 and C++. Features a beautiful Apple-inspired dark theme UI for real-time network monitoring.
+# 🔍 PacketAnalyzer
 
-## ✨ Features
+> A sleek, professional network packet capture and analysis tool with real-time scanning capabilities
 
-- 🔥 **Real-time Packet Capture** - Live network traffic monitoring
-- 🌐 **Network Scanner** - Discover active devices on your network  
-- 📤 **Packet Sender** - Send test packets to any IP:port
-- 💾 **Export Functionality** - Save captured packets to JSON/TXT
-- 🎨 **Modern UI** - Apple-style dark theme interface
-- ⚡ **Multi-threaded** - Non-blocking capture and scanning
+<div align="center">
 
-## 🖥️ Screenshots
+![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)
+![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20Windows-green.svg)
+![Qt](https://img.shields.io/badge/Qt-6.0+-blue.svg)
+![License](https://img.shields.io/badge/license-MIT-red.svg)
 
-Beautiful dark theme with real-time packet display:
-- Network interface selection
-- Live packet table with protocol detection
-- Detailed packet inspection
-- Network device discovery
+**[Features](#-features) • [Installation](#-installation) • [Usage](#-usage) • [Screenshots](#-screenshots)**
 
-## 🛠️ Requirements
+</div>
 
-- Qt6 (Core, Widgets)
-- CMake 3.16+
-- libpcap (Linux/macOS) or Npcap (Windows)
-- C++17 compiler
-- Root/Administrator privileges (for packet capture)
+---
 
-## 📦 Installation
+## 🌟 Features
 
-### Linux/WSL:
+<table>
+<tr>
+<td width="50%">
+
+### 📡 **Network Capture**
+- ⚡ **Real-time packet monitoring** with libpcap
+- 🔌 **Auto-detect network interfaces** (WiFi/Ethernet)
+- 📊 **Live packet analysis** with protocol detection
+- 💾 **Export capabilities** (JSON/TXT formats)
+
+</td>
+<td width="50%">
+
+### 🌐 **Network Discovery** 
+- 🗺️ **Fast nmap integration** for device scanning
+- 🏷️ **MAC address detection** with vendor info
+- 🎯 **Smart network range detection** (172.16.x.x support)
+- 📋 **Clean, organized results** display
+
+</td>
+</tr>
+</table>
+
+### 🎨 **User Experience**
+- 🌙 **Modern dark theme** interface
+- ⚡ **Lightning-fast scanning** (5-10 seconds)
+- 🧭 **Intuitive navigation** and controls
+- 🔒 **Professional security tool** design
+
+---
+
+## 🚀 Installation
+
+### Prerequisites
 ```bash
-# Install dependencies
-sudo apt update
-sudo apt install qt6-base-dev qt6-tools-dev cmake build-essential libpcap-dev
+# Ubuntu/Debian
+sudo apt update && sudo apt install qt6-base-dev libqt6widgets6 libpcap-dev nmap
 
-# Clone and build
-git clone https://github.com/YOUR_USERNAME/PacketAnalyzer.git
-cd PacketAnalyzer
-cmake -B build -S .
-cmake --build build
+# Arch Linux
+sudo pacman -S qt6-base libpcap nmap
 
-# Run (requires root for packet capture)
-sudo ./build/PacketAnalyzer
-
-[200~Windows:
-bash# Install Qt6, CMake, and Npcap from their websites
-# Then:
-cmake -B build -S . -DCMAKE_PREFIX_PATH="C:\Qt\6.5.0\mingw_64"
-cmake --build build
-# Run as Administrator
-```
-🚀 Usage
-
-Select Network Interface - Choose your WiFi/Ethernet adapter
-Start Capture - Begin monitoring network traffic
-Scan Network - Discover devices on your subnet
-Send Packets - Test connectivity to any IP:port
-Export Data - Save captured packets for analysis
-
-⚠️ Security Notice
-This tool requires administrator/root privileges for:
-
-Raw packet capture access
-Network interface monitoring
-Packet injection capabilities
-
-Use responsibly and only on networks you own or have permission to monitor.
-🔧 Supported Protocols
-
-TCP, UDP, ICMP
-IPv4 traffic analysis
-Ethernet frame parsing
-Port-based application detection
-
-📄 License
-MIT License - Feel free to use and modify!
-🤝 Contributing
-Pull requests welcome! Please read contributing guidelines first.
-
-Built with ❤️ using Qt6 and libpcap
+# Fedora/RHEL
+sudo dnf install qt6-qtbase-devel libpcap-devel nmap
