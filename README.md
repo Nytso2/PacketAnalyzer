@@ -9,12 +9,12 @@
 ![Qt](https://img.shields.io/badge/Qt-6.0+-blue.svg)
 ![License](https://img.shields.io/badge/license-MIT-red.svg)
 
-**[Features](#-features) • [Installation](#-installation) • [Usage](#-usage) • [Screenshots](#-screenshots)**
+**[Features](#-features) • [Installation](#-installation)**
 
 </div>
 
 ---
-<img src="screenshots/Screenshot1.png" alt="Main Interface" width="80%">
+<img src="screenshots/Screenshot1" alt="Main Interface" width="80%">
 
 ## 🌟 Features
 
