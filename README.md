@@ -14,6 +14,7 @@
 </div>
 
 ---
+<img src="screenshots/main_interface.png" alt="Main Interface" width="80%">
 
 ## 🌟 Features
 
@@ -85,6 +86,6 @@ Framework: Qt6 with C++17
 - Root/Admin - Required for packet capture
 
 ### License
-This project is licensed under the MIT License - see the LICENSE file for details.
+- This project is licensed under the MIT License - see the LICENSE file for details.
 ### NOTICE
 - This tool is designed for educational purposes and authorized network analysis only. Users must ensure compliance with all applicable laws and regulations. 
