@@ -28,6 +28,8 @@
 #include <QProcess>
 #include <QDialog>
 #include <QTextStream>
+#include <QDebug>
+#include <QRegularExpression>
 
 // Platform-specific includes
 #ifdef _WIN32
@@ -49,6 +51,9 @@
     #include <arpa/inet.h>
     #include <unistd.h>
     #include <pcap/pcap.h>
+    #include <fcntl.h>
+    #include <errno.h>
+    #include <sys/select.h>
 #endif
 
 // Packet structure for our application
@@ -144,9 +149,12 @@ private:
     // Network utility functions
     QString getLocalIPAddress();
     bool pingHost(const QString &host);
+    bool tcpPing(const QString &host, int port);
     QString getHostname(const QString &ip);
     bool sendTCPPacket(const QString &srcIP, const QString &dstIP, int port);
     void updateScanResults(const QStringList &devices, const QString &networkBase = "");
+    bool isNmapAvailable();
+    QStringList runNmapScan(const QString &networkRange);
     
     // UI Components
     QComboBox *m_interfaceCombo;
@@ -170,94 +178,6 @@ private:
 
 // Implementation of PacketCaptureWorker::run()
 void PacketCaptureWorker::run() {
-#ifdef _WIN32
-    char errbuf[PCAP_ERRBUF_SIZE];
-    pcap_t *handle;
-    
-    // Open the interface for packet capture
-    handle = pcap_open_live(m_interface.toLocal8Bit().data(), BUFSIZ, 1, 1000, errbuf);
-    if (handle == nullptr) {
-        emit errorOccurred(QString("Couldn't open device: %1").arg(errbuf));
-        return;
-    }
-    
-    struct pcap_pkthdr header;
-    const u_char *packet;
-    int packetId = 0;
-    
-    while (!m_shouldStop) {
-        packet = pcap_next(handle, &header);
-        if (packet != nullptr) {
-            PacketInfo info;
-            info.id = ++packetId;
-            info.timestamp = QDateTime::currentDateTime();
-            info.length = header.len;
-            info.rawData = QByteArray(reinterpret_cast<const char*>(packet), header.len);
-            
-            // Basic packet parsing (simplified)
-            if (header.len >= 14) { // Ethernet header
-                // Parse Ethernet header
-                const u_char *eth_header = packet;
-                u_short eth_type = ntohs(*(u_short*)(eth_header + 12));
-                
-                if (eth_type == 0x0800 && header.len >= 34) { // IPv4
-                    const u_char *ip_header = packet + 14;
-                    info.sourceIP = QString("%1.%2.%3.%4")
-                        .arg(ip_header[12]).arg(ip_header[13])
-                        .arg(ip_header[14]).arg(ip_header[15]);
-                    info.destinationIP = QString("%1.%2.%3.%4")
-                        .arg(ip_header[16]).arg(ip_header[17])
-                        .arg(ip_header[18]).arg(ip_header[19]);
-                    
-                    u_char protocol = ip_header[9];
-                    switch (protocol) {
-                        case 6:  // TCP
-                            info.protocol = "TCP";
-                            if (header.len >= 54) {
-                                const u_char *tcp_header = packet + 34;
-                                info.sourcePort = ntohs(*(u_short*)tcp_header);
-                                info.destinationPort = ntohs(*(u_short*)(tcp_header + 2));
-                            }
-                            break;
-                        case 17: // UDP
-                            info.protocol = "UDP";
-                            if (header.len >= 42) {
-                                const u_char *udp_header = packet + 34;
-                                info.sourcePort = ntohs(*(u_short*)udp_header);
-                                info.destinationPort = ntohs(*(u_short*)(udp_header + 2));
-                            }
-                            break;
-                        case 1:  // ICMP
-                            info.protocol = "ICMP";
-                            break;
-                        default:
-                            info.protocol = QString("IP (%1)").arg(protocol);
-                            break;
-                    }
-                } else {
-                    info.protocol = "Other";
-                    info.sourceIP = "Unknown";
-                    info.destinationIP = "Unknown";
-                }
-            } else {
-                info.protocol = "Unknown";
-                info.sourceIP = "Unknown";
-                info.destinationIP = "Unknown";
-            }
-            
-            info.summary = QString("%1 -> %2 [%3] %4 bytes")
-                .arg(info.sourceIP, info.destinationIP, info.protocol)
-                .arg(info.length);
-            
-            emit packetCaptured(info);
-        }
-        
-        // Small delay to prevent excessive CPU usage
-        msleep(1);
-    }
-    
-    pcap_close(handle);
-#else
     char errbuf[PCAP_ERRBUF_SIZE];
     pcap_t *handle;
     
@@ -342,7 +262,6 @@ void PacketCaptureWorker::run() {
     }
     
     pcap_close(handle);
-#endif
 }
 
 // Implementation of PacketAnalyzer
@@ -372,7 +291,7 @@ bool PacketAnalyzer::startCapture(const QString &interface) {
 void PacketAnalyzer::stopCapture() {
     if (m_worker && m_isCapturing) {
         m_worker->stop();
-        m_worker->wait(3000); // Wait up to 3 seconds
+        m_worker->wait(3000);
         m_worker = nullptr;
         m_isCapturing = false;
     }
@@ -381,27 +300,6 @@ void PacketAnalyzer::stopCapture() {
 QStringList PacketAnalyzer::getNetworkInterfaces() {
     QStringList interfaces;
     
-#ifdef _WIN32
-    pcap_if_t *alldevs;
-    char errbuf[PCAP_ERRBUF_SIZE];
-    
-    if (pcap_findalldevs(&alldevs, errbuf) == -1) {
-        return interfaces;
-    }
-    
-    for (pcap_if_t *device = alldevs; device; device = device->next) {
-        QString name = QString::fromLocal8Bit(device->name);
-        QString description = device->description ? 
-            QString::fromLocal8Bit(device->description) : name;
-        
-        // Skip loopback and non-ethernet interfaces
-        if (description.contains("Loopback", Qt::CaseInsensitive)) continue;
-        
-        interfaces.append(QString("%1|%2").arg(description, name));
-    }
-    
-    pcap_freealldevs(alldevs);
-#else
     pcap_if_t *alldevs;
     char errbuf[PCAP_ERRBUF_SIZE];
     
@@ -421,7 +319,6 @@ QStringList PacketAnalyzer::getNetworkInterfaces() {
         }
         pcap_freealldevs(alldevs);
     }
-#endif
     
     if (interfaces.isEmpty()) {
         interfaces.append("No interfaces found - Run as root/Administrator|");
@@ -539,6 +436,12 @@ void MainWindow::setupLeftPanel(QWidget *parent) {
     layout->addWidget(controlGroup);
     layout->addStretch();
     
+    // Credits
+    QLabel *creditsLabel = new QLabel("Made by Nytso2");
+    creditsLabel->setStyleSheet("color: #666666; font-size: 10px; margin: 5px;");
+    creditsLabel->setAlignment(Qt::AlignCenter);
+    layout->addWidget(creditsLabel);
+    
     // Store scan button reference
     m_scanButton = scanBtn;
     
@@ -630,62 +533,63 @@ void MainWindow::clearPackets() {
     updatePacketCount();
 }
 
+// Network scanning with nmap
 void MainWindow::scanNetwork() {
     m_scanButton->setEnabled(false);
     m_scanButton->setText("Scanning...");
-    statusBar()->showMessage("Scanning network for active devices...");
+    statusBar()->showMessage("Starting nmap network scan...");
     
-    // Run network scan in a separate thread
     QThread *scanThread = QThread::create([this]() {
         QStringList devices;
         
-        // Get local IP range
         QString localIP = getLocalIPAddress();
         if (localIP.isEmpty()) {
             QMetaObject::invokeMethod(this, [this]() {
-                QMessageBox::warning(this, "Warning", "Could not determine local IP address. Trying default range 192.168.1.x");
+                QMessageBox::warning(this, "Warning", "Could not determine local IP address.");
                 m_scanButton->setEnabled(true);
                 m_scanButton->setText("Scan Network");
             });
-            localIP = "192.168.1.100"; // Default fallback
+            return;
         }
         
-        // Show which network we're scanning
         QMetaObject::invokeMethod(this, [this, localIP]() {
-            statusBar()->showMessage(QString("Scanning network from local IP: %1").arg(localIP));
+            statusBar()->showMessage(QString("Detected local IP: %1").arg(localIP));
         });
         
-        // Extract network range (e.g., 192.168.1.x)
-        QString networkBase = localIP.section('.', 0, 2) + ".";
-        
-        // Add local IP first
-        devices.append(QString("%1 (This Computer - %2)").arg(localIP, "LOCAL"));
-        
-        // Ping sweep from .1 to .254 (but skip our own IP)
-        for (int i = 1; i <= 254; i++) {
-            QString targetIP = networkBase + QString::number(i);
-            
-            // Skip our own IP
-            if (targetIP == localIP) continue;
-            
-            // Update progress
-            QMetaObject::invokeMethod(this, [this, i, targetIP]() {
-                statusBar()->showMessage(QString("Scanning %1 (%2/254)").arg(targetIP).arg(i));
-            });
-            
-            if (pingHost(targetIP)) {
-                QString hostname = getHostname(targetIP);
-                QString deviceInfo = QString("%1 (%2)").arg(targetIP, hostname);
-                devices.append(deviceInfo);
-                
-                // Show found device immediately
-                QMetaObject::invokeMethod(this, [this, targetIP, hostname]() {
-                    statusBar()->showMessage(QString("Found device: %1 (%2)").arg(targetIP, hostname));
-                });
-            }
+        // Determine network range
+        QString networkRange;
+        if (localIP.startsWith("172.16.")) {
+            networkRange = "172.16.0.0/23";
+        } else if (localIP.startsWith("192.168.")) {
+            QStringList parts = localIP.split('.');
+            networkRange = parts[0] + "." + parts[1] + "." + parts[2] + ".0/24";
+        } else if (localIP.startsWith("10.")) {
+            networkRange = "10.0.0.0/8";
+        } else {
+            QStringList parts = localIP.split('.');
+            networkRange = parts[0] + "." + parts[1] + "." + parts[2] + ".0/24";
         }
         
-        // Update UI with results
+        devices.append(QString("%1 (This Computer - LOCAL)").arg(localIP));
+        
+        if (!isNmapAvailable()) {
+            QMetaObject::invokeMethod(this, [this]() {
+                QMessageBox::warning(this, "nmap Not Found", 
+                    "nmap is not installed. Install it with:\nsudo apt install nmap");
+                m_scanButton->setEnabled(true);
+                m_scanButton->setText("Scan Network");
+            });
+            return;
+        }
+        
+        QMetaObject::invokeMethod(this, [this, networkRange]() {
+            statusBar()->showMessage(QString("Running nmap scan on %1...").arg(networkRange));
+        });
+        
+        QStringList nmapResults = runNmapScan(networkRange);
+        devices.append(nmapResults);
+        
+        QString networkBase = localIP.startsWith("172.16.") ? "172.16." : localIP.section('.', 0, 2) + ".";
         QMetaObject::invokeMethod(this, [this, devices, networkBase]() {
             updateScanResults(devices, networkBase);
         });
@@ -696,7 +600,6 @@ void MainWindow::scanNetwork() {
 }
 
 void MainWindow::sendTestPacket() {
-    QString srcIP = "192.168.1.100";
     QString dstIP = "8.8.8.8";
     int port = 80;
     
@@ -709,8 +612,7 @@ void MainWindow::sendTestPacket() {
                                "Enter destination port:", port, 1, 65535, 1, &ok);
     if (!ok) return;
     
-    // Create a simple TCP SYN packet
-    if (sendTCPPacket(srcIP, dstIP, port)) {
+    if (sendTCPPacket("", dstIP, port)) {
         QMessageBox::information(this, "Success", 
             QString("Test packet sent to %1:%2").arg(dstIP).arg(port));
         statusBar()->showMessage(QString("Packet sent to %1:%2").arg(dstIP, QString::number(port)));
@@ -741,7 +643,6 @@ void MainWindow::savePackets() {
     QTextStream out(&file);
     
     if (fileName.endsWith(".json")) {
-        // Save as JSON
         QJsonArray packetsArray;
         for (auto it = m_packetData.begin(); it != m_packetData.end(); ++it) {
             const PacketInfo &packet = it.value();
@@ -767,14 +668,9 @@ void MainWindow::savePackets() {
         QJsonDocument doc(root);
         out << doc.toJson();
     } else {
-        // Save as text
         out << "Packet Analyzer Export\n";
         out << "Generated: " << QDateTime::currentDateTime().toString() << "\n";
         out << "Total Packets: " << m_packetData.size() << "\n\n";
-        out << QString("%1\t%2\t%3\t%4\t%5\t%6\t%7\n")
-               .arg("ID", "Timestamp", "Source", "Destination", "Protocol", "Length", "Summary");
-        out << QString("=").repeated(100) << "\n";
-        
         for (auto it = m_packetData.begin(); it != m_packetData.end(); ++it) {
             const PacketInfo &packet = it.value();
             out << QString("%1\t%2\t%3\t%4\t%5\t%6\t%7\n")
@@ -791,7 +687,6 @@ void MainWindow::savePackets() {
     file.close();
     QMessageBox::information(this, "Success", 
         QString("Saved %1 packets to %2").arg(m_packetData.size()).arg(fileName));
-    statusBar()->showMessage(QString("Packets saved to %1").arg(fileName));
 }
 
 void MainWindow::onPacketCaptured(const PacketInfo &packet) {
@@ -806,10 +701,7 @@ void MainWindow::onPacketCaptured(const PacketInfo &packet) {
     m_packetTable->setItem(row, 5, new QTableWidgetItem(QString::number(packet.length)));
     m_packetTable->setItem(row, 6, new QTableWidgetItem(packet.summary));
     
-    // Store packet data
     m_packetData[row] = packet;
-    
-    // Auto-scroll to latest
     m_packetTable->scrollToBottom();
     
     m_packetCount++;
@@ -860,20 +752,9 @@ QString MainWindow::getSelectedInterface() {
 }
 
 QString MainWindow::getLocalIPAddress() {
+    struct ifaddrs *ifaddrs_ptr;
     QString localIP;
     
-#ifdef _WIN32
-    char hostname[256];
-    if (gethostname(hostname, sizeof(hostname)) == 0) {
-        struct hostent *host = gethostbyname(hostname);
-        if (host != nullptr) {
-            struct in_addr addr;
-            addr.s_addr = *((unsigned long *)host->h_addr);
-            localIP = QString(inet_ntoa(addr));
-        }
-    }
-#else
-    struct ifaddrs *ifaddrs_ptr;
     if (getifaddrs(&ifaddrs_ptr) == 0) {
         for (struct ifaddrs *ifa = ifaddrs_ptr; ifa != nullptr; ifa = ifa->ifa_next) {
             if (ifa->ifa_addr && ifa->ifa_addr->sa_family == AF_INET) {
@@ -887,23 +768,60 @@ QString MainWindow::getLocalIPAddress() {
         }
         freeifaddrs(ifaddrs_ptr);
     }
-#endif
     
     return localIP;
 }
 
 bool MainWindow::pingHost(const QString &host) {
-#ifdef _WIN32
-    QString command = QString("ping -n 1 -w 100 %1").arg(host);
-#else
-    QString command = QString("ping -c 1 -W 1 %1").arg(host);
-#endif
+    QString command = QString("ping -c 1 -W 2 -q %1").arg(host);
     
-    QProcess ping;
-    ping.start(command);
-    ping.waitForFinished(1500);
+    QProcess process;
+    process.setProcessChannelMode(QProcess::MergedChannels);
+    process.start(command);
     
-    return ping.exitCode() == 0;
+    if (!process.waitForFinished(5000)) {
+        process.kill();
+        return false;
+    }
+    
+    return process.exitCode() == 0;
+}
+
+bool MainWindow::tcpPing(const QString &host, int port) {
+    int sock = socket(AF_INET, SOCK_STREAM, 0);
+    if (sock < 0) return false;
+    
+    int flags = fcntl(sock, F_GETFL, 0);
+    fcntl(sock, F_SETFL, flags | O_NONBLOCK);
+    
+    struct sockaddr_in addr;
+    addr.sin_family = AF_INET;
+    addr.sin_port = htons(port);
+    inet_pton(AF_INET, host.toLocal8Bit().data(), &addr.sin_addr);
+    
+    int result = ::connect(sock, (struct sockaddr*)&addr, sizeof(addr));
+    
+    if (result == 0) {
+        ::close(sock);
+        return true;
+    }
+    
+    if (errno == EINPROGRESS) {
+        fd_set writefds;
+        FD_ZERO(&writefds);
+        FD_SET(sock, &writefds);
+        
+        struct timeval timeout;
+        timeout.tv_sec = 2;
+        timeout.tv_usec = 0;
+        
+        result = select(sock + 1, NULL, &writefds, NULL, &timeout);
+        ::close(sock);
+        return result > 0;
+    }
+    
+    ::close(sock);
+    return false;
 }
 
 QString MainWindow::getHostname(const QString &ip) {
@@ -920,27 +838,7 @@ QString MainWindow::getHostname(const QString &ip) {
     return "Unknown";
 }
 
-bool MainWindow::sendTCPPacket(const QString &srcIP, const QString &dstIP, int port) {
-#ifdef _WIN32
-    SOCKET sock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-    if (sock == INVALID_SOCKET) return false;
-    
-    struct sockaddr_in dest;
-    dest.sin_family = AF_INET;
-    dest.sin_port = htons(port);
-    inet_pton(AF_INET, dstIP.toLocal8Bit().data(), &dest.sin_addr);
-    
-    // Set a short timeout
-    int timeout = 1000; // 1 second
-    setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, (char*)&timeout, sizeof(timeout));
-    setsockopt(sock, SOL_SOCKET, SO_SNDTIMEO, (char*)&timeout, sizeof(timeout));
-    
-    // Try to connect (this sends a SYN packet) - use global scope
-    ::connect(sock, (struct sockaddr*)&dest, sizeof(dest));
-    closesocket(sock);
-    
-    return true; // We sent a packet regardless of connection success
-#else
+bool MainWindow::sendTCPPacket(const QString &, const QString &dstIP, int port) {
     int sock = socket(AF_INET, SOCK_STREAM, 0);
     if (sock < 0) return false;
     
@@ -949,29 +847,110 @@ bool MainWindow::sendTCPPacket(const QString &srcIP, const QString &dstIP, int p
     dest.sin_port = htons(port);
     inet_pton(AF_INET, dstIP.toLocal8Bit().data(), &dest.sin_addr);
     
-    // Set timeout
     struct timeval timeout;
     timeout.tv_sec = 1;
     timeout.tv_usec = 0;
     setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, (char*)&timeout, sizeof(timeout));
     setsockopt(sock, SOL_SOCKET, SO_SNDTIMEO, (char*)&timeout, sizeof(timeout));
     
-    // Use global scope connect and close to avoid Qt namespace conflicts
     ::connect(sock, (struct sockaddr*)&dest, sizeof(dest));
     ::close(sock);
     
     return true;
-#endif
+}
+
+bool MainWindow::isNmapAvailable() {
+    QProcess process;
+    process.start("nmap", QStringList() << "--version");
+    process.waitForFinished(3000);
+    return process.exitCode() == 0;
+}
+
+QStringList MainWindow::runNmapScan(const QString &networkRange) {
+    QStringList devices;
+    
+    QProcess process;
+    QStringList arguments;
+    arguments << "-sn"                    // Ping scan only
+              << "--max-retries" << "2"   // Max 2 retries
+              << "--host-timeout" << "3s" // 3 second timeout per host
+              << networkRange;
+    
+    qDebug() << "Running nmap command:" << "nmap" << arguments.join(" ");
+    
+    process.start("nmap", arguments);
+    if (!process.waitForFinished(60000)) { // 60 second timeout
+        process.kill();
+        qDebug() << "nmap scan timed out";
+        return devices;
+    }
+    
+    if (process.exitCode() != 0) {
+        qDebug() << "nmap failed with exit code:" << process.exitCode();
+        return devices;
+    }
+    
+    QString output = process.readAllStandardOutput();
+    qDebug() << "nmap output:" << output;
+    
+    // Parse nmap output for IP and MAC addresses
+    QStringList lines = output.split('\n');
+    QString currentIP;
+    QString currentMAC;
+    
+    for (const QString &line : lines) {
+        QString trimmed = line.trimmed();
+        
+        if (trimmed.startsWith("Nmap scan report for")) {
+            // Save previous device if we have one
+            if (!currentIP.isEmpty()) {
+                QString deviceInfo = currentIP;
+                if (!currentMAC.isEmpty()) {
+                    deviceInfo += QString(" - MAC: %1").arg(currentMAC);
+                }
+                devices.append(deviceInfo);
+            }
+            
+            // Extract IP from current line
+            QRegularExpression ipRegex(R"(\b(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})\b)");
+            QRegularExpressionMatch match = ipRegex.match(trimmed);
+            
+            if (match.hasMatch()) {
+                currentIP = match.captured(1);
+                currentMAC.clear(); // Reset MAC for new device
+                qDebug() << "Found IP:" << currentIP;
+            }
+        }
+        else if (trimmed.startsWith("MAC Address:")) {
+            // Extract MAC: "MAC Address: 00:50:E8:10:07:96 (Nomadix)"
+            QRegularExpression macRegex(R"(MAC Address:\s+([0-9A-Fa-f:]{17}))");
+            QRegularExpressionMatch match = macRegex.match(trimmed);
+            if (match.hasMatch()) {
+                currentMAC = match.captured(1);
+                qDebug() << "Found MAC:" << currentMAC << "for IP:" << currentIP;
+            }
+        }
+    }
+    
+    // Don't forget the last device
+    if (!currentIP.isEmpty()) {
+        QString deviceInfo = currentIP;
+        if (!currentMAC.isEmpty()) {
+            deviceInfo += QString(" - MAC: %1").arg(currentMAC);
+        }
+        devices.append(deviceInfo);
+    }
+    
+    return devices;
 }
 
 void MainWindow::updateScanResults(const QStringList &devices, const QString &networkBase) {
     m_scanButton->setEnabled(true);
     m_scanButton->setText("Scan Network");
     
-    QString message = QString("Network scan completed - %1 devices found on %2.x network").arg(devices.size()).arg(networkBase.left(networkBase.length()-1));
+    QString message = QString("Network scan completed - %1 devices found").arg(devices.size());
     statusBar()->showMessage(message);
     
-    // Create results dialog
     QDialog *resultsDialog = new QDialog(this);
     resultsDialog->setWindowTitle("Network Scan Results");
     resultsDialog->setModal(true);
@@ -979,41 +958,32 @@ void MainWindow::updateScanResults(const QStringList &devices, const QString &ne
     
     QVBoxLayout *layout = new QVBoxLayout(resultsDialog);
     
-    QLabel *titleLabel = new QLabel(QString("Found %1 active devices on network %2.x:").arg(devices.size()).arg(networkBase.left(networkBase.length()-1)));
+    QLabel *titleLabel = new QLabel(QString("Found %1 active devices:").arg(devices.size()));
     titleLabel->setStyleSheet("font-weight: bold; font-size: 14px; margin: 10px; color: #ffffff;");
     layout->addWidget(titleLabel);
     
     QTextEdit *deviceList = new QTextEdit;
     deviceList->setReadOnly(true);
+    
     if (devices.isEmpty()) {
         deviceList->setPlainText("No devices found.\n\nTroubleshooting tips:\n"
                                 "1. Make sure you're connected to a network\n"
-                                "2. Try running as root/administrator\n"
-                                "3. Check if ping works: ping 8.8.8.8\n"
+                                "2. Try running as root/administrator: sudo ./PacketAnalyzer\n"
+                                "3. Check if nmap is installed: nmap --version\n"
                                 "4. Your network might block ping (ICMP)");
     } else {
         deviceList->setPlainText(devices.join("\n"));
     }
     layout->addWidget(deviceList);
     
-    // Add buttons
     QHBoxLayout *buttonLayout = new QHBoxLayout;
     QPushButton *closeButton = new QPushButton("Close");
-    QPushButton *testButton = new QPushButton("Test Ping to 8.8.8.8");
     
-    buttonLayout->addWidget(testButton);
     buttonLayout->addStretch();
     buttonLayout->addWidget(closeButton);
     layout->addLayout(buttonLayout);
     
     connect(closeButton, &QPushButton::clicked, resultsDialog, &QDialog::accept);
-    connect(testButton, &QPushButton::clicked, [this, deviceList]() {
-        if (pingHost("8.8.8.8")) {
-            deviceList->append("\n✅ Ping to 8.8.8.8 successful!");
-        } else {
-            deviceList->append("\n❌ Ping to 8.8.8.8 failed - check internet connection");
-        }
-    });
     
     resultsDialog->show();
 }
@@ -1117,17 +1087,14 @@ QString MainWindow::getDarkTheme() {
     )";
 }
 
-// Include the MOC file
 #include "main.moc"
 
-int main(int argc, char *argv[])
-{
+int main(int argc, char *argv[]) {
     QApplication app(argc, argv);
     
     app.setApplicationName("Packet Analyzer");
     app.setApplicationVersion("1.0.0");
     
-    // Check admin privileges warning
     QMessageBox::information(nullptr, "Admin Required", 
         "This application requires root/Administrator privileges for packet capture.\n"
         "Please run as root/Administrator.");
