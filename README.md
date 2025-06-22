@@ -41,12 +41,6 @@
 </tr>
 </table>
 
-### 🎨 **User Experience**
-- 🌙 **Modern dark theme** interface
-- ⚡ **Lightning-fast scanning** (5-10 seconds)
-- 🧭 **Intuitive navigation** and controls
-- 🔒 **Professional security tool** design
-
 ---
 
 ## 🚀 Installation
