@@ -1,3 +1,6 @@
+// Author Luis Coronel
+// filename : main.cpp
+
 #include <QApplication>
 #include <QMainWindow>
 #include <QVBoxLayout>
