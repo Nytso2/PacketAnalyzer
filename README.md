@@ -69,13 +69,44 @@ cd PacketAnalyzer
 qmake6 && make
 sudo ./PacketAnalyzer  # Root required for packet capture
 ```
-### Technical Stack
+## ⚙️ Network Configuration
 
-Framework: Qt6 with C++17
-- Packet Engine: libpcap with multi-threading
-- Network Scanner: nmap integration
-- UI/UX: Custom dark theme with Qt Widgets
-- Export: JSON and plaintext formats
+**Most users won't need to edit anything** - the tool auto-detects your network. But if network scanning doesn't find devices, you may need to adjust these lines:
+
+### 📍 Location: `main.cpp` around line 450-460
+
+```cpp
+// In the scanNetwork() function - edit if needed:
+
+if (localIP.startsWith("172.16.")) {
+    networkRange = "172.16.0.0/23";  // ← Change this number if needed
+} else if (localIP.startsWith("192.168.")) {
+    QStringList parts = localIP.split('.');
+    networkRange = parts[0] + "." + parts[1] + "." + parts[2] + ".0/24";  // ← Usually fine
+} else if (localIP.startsWith("10.")) {
+    networkRange = "10.0.0.0/8";     // ← Change this number if needed
+} else {
+    // Fallback for other networks
+    QStringList parts = localIP.split('.');
+    networkRange = parts[0] + "." + parts[1] + "." + parts[2] + ".0/24";
+}
+```
+### 🏠 Common Network Types:
+
+- Home WiFi: 192.168.1.0/24 ✅ (works automatically)
+- Corporate: 10.0.0.0/16 or 172.16.0.0/16
+- Large networks: /8 covers more IPs, /24 covers fewer
+
+🔍 How to Check Your Network:
+
+```bash
+ip route | grep default
+```
+### 📝 Only Edit If:
+
+- Network scan finds 0 devices but you know there are devices You're on a corporate network with custom IP ranges Your router uses non-standard subnets
+
+### many users might not need to change anything
 
 ### Requirements
 
