@@ -91,12 +91,6 @@ if (localIP.startsWith("172.16.")) {
     networkRange = parts[0] + "." + parts[1] + "." + parts[2] + ".0/24";
 }
 ```
-### 🏠 Common Network Types:
-
-- Home WiFi: 192.168.1.0/24 ✅ (works automatically)
-- Corporate: 10.0.0.0/16 or 172.16.0.0/16
-- Large networks: /8 covers more IPs, /24 covers fewer
-
 🔍 How to Check Your Network:
 
 ```bash
@@ -105,8 +99,6 @@ ip route | grep default
 ### 📝 Only Edit If:
 
 - Network scan finds 0 devices but you know there are devices You're on a corporate network with custom IP ranges Your router uses non-standard subnets
-
-### many users might not need to change anything
 
 ### Requirements
 
